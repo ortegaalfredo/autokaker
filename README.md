@@ -1,6 +1,19 @@
 # autokaker
 Automated vulnerability discovery and refactor (autopatcher)
 
+```
+  _____
+ /     \  AI
+|  o o  | ___
+| \___/ |/   \
+|__   __|     |
+   | | | 01001|
+ __|_|_|_____/
+|           |
+|  HACK.exe |
+|___________|
+```
+
 ## Install
 
 Execute:
@@ -13,10 +26,12 @@ pip install -r requirements.txt
 
 Autokaker and Autopatcher can use two different LLM APIs:
 
-. Neuroengine free API using LLama3 and other open models
-. OpenAI API
+1. Neuroengine.ai free API using LLama3 and other open models
+2. OpenAI API
 
-To use the OpenAI api, the api key must be in the file api-key.txt
+To use the OpenAI api, the api key must be in the file api-key.txt, and select the OpenAI model name from the combo box.
+
+The Neuroengine API do not need any key.
 
 #3 Usage
 
@@ -35,17 +50,22 @@ python autok.py source.c
 
 ## Auto patching an existing project
 
-Patching zlib project:
+Patching an example 'zlib' project at directory './zlib':
 
 ```
 python autok.py --patch ./zlib
 ```
 
-Patching zlib project and testing the patch using 'make':
+Patching an example 'zlib' project and testing the patch using 'make':
 
 ```
-python autok.py --patch ./zlib --make "make"
+cd zlib
+python ../autok.py --patch . --make "make"
 ```
 
+Patching an example 'zlib' project, testing executing 'make' and compression/decompression test 'example64':
 
-
+```
+cd zlib
+python ../autok.py --patch . --make "make&&./example64"
+```
