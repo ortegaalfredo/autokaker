@@ -33,12 +33,25 @@ To use the OpenAI api, the api key must be in the file api-key.txt, and select t
 
 The Neuroengine API do not need any key.
 
-#3 Usage
+## Usage
 
 ```
-autok.py [-h] [--patch] [--make MAKE] path
+autok.py [-h] [--patch] [--make MAKE] patha
+
+AutoKaker v1.0: Simple LLM bughunter/autopatcher
+
+positional arguments:
+  path         The path to a file or directory
+
+options:
+  -h, --help   show this help message and exit
+  --patch      Activate patch mode
+  --make MAKE  Feedback command
 
 ```
+
+
+![Autokaker-gui](https://raw.githubusercontent.com/ortegaalfredo/autokaker/main/autok.png)
 
 ## Auto vuln-discovery example
 
@@ -49,6 +62,8 @@ python autok.py source.c
 ```
 
 ## Auto patching an existing project
+
+![Autopatcher-gui](https://raw.githubusercontent.com/ortegaalfredo/autokaker/main/autopatch.png)
 
 Patching an example 'zlib' project at directory './zlib':
 
@@ -69,3 +84,8 @@ Patching an example 'zlib' project, testing executing 'make' and compression/dec
 cd zlib
 python ../autok.py --patch . --make "make&&./example64"
 ```
+
+## Current LLM bug-hunting leaderboard (From Crashbench V1)
+
+![Leaderboard](https://raw.githubusercontent.com/ortegaalfredo/crashbench/main/models-scores.png)
+
