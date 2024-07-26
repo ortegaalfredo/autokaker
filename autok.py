@@ -1,5 +1,6 @@
 import json,re,threading,sys,os
 import fnmatch,shutil,subprocess
+from pathlib import Path
 import openai
 from neuroengine import Neuroengine
 import FreeSimpleGUI as sg
@@ -95,6 +96,8 @@ def call_openai(prompt,model):
 # Crude C code parser
 
 def parse_c_functions(code):
+    if code is None:
+        return
     functions = []
     
     # Define a regex pattern for C function headers
@@ -111,12 +114,14 @@ def parse_c_functions(code):
         pos = start_pos
         
         # Traverse the code to find the matching closing brace
-        while brace_count > 0 and pos < len(code):
+        while (brace_count > 0) and (pos <= len(code)):
+         try:
             pos += 1
             if code[pos] == '{':
                 brace_count += 1
             elif code[pos] == '}':
                 brace_count -= 1
+         except: break
         
         # Extract the function header and body
         function_header = code[header_start:start_pos ]
@@ -164,12 +169,26 @@ def insert_text_at_line(file_path, line_number, text_to_insert):
     except Exception as e:
         print(f"Error inserting text: {e}")
 
+def add_report_to_file(filename, function_line, report, function):
+    reportfile = f"{filename}.report.md"
+
+    # Determine the mode to open the file
+    mode = 'a' if os.path.exists(reportfile) else 'w'
+
+    with open(reportfile, mode) as file:
+        if mode == 'w':
+            file.write(f"## AutoK report for file {filename}\n")
+
+        file.write(f"## Report for line {function_line}\n")
+        file.write(f"{report}\n")
+        file.write(f"```cpp\n{function}\n```\n")
+
 # Execute LLM and retrieve results
-def addRule(function,filename,count,total,service_name):
+def callAI(function,filename,count,total,service_name,embed_report=True):
         global issues
         global rulesprompt
         function=function[0]
-        print(f'Processing function {count}/{total}')
+        print(f'[I]\tProcessing function {filename}: {count}/{total}')
         prompt='You are an expert security researcher, programmer and bug finder. You analize every code you see and are capable of finding programming bugs at an expert or super-human level.\n'
         prompt+=f'Explain the bugs in a very concise way. Report only exploitable critical bugs. If a critical bug is found, prefix it with the word "FIXME:". Perform the following exhaustive checks on the code:\n{rulesprompt}\n{function}'
         if service_name.startswith("gpt"):
@@ -181,8 +200,38 @@ def addRule(function,filename,count,total,service_name):
         res = get_file_text(filename)
         function_line=find_line_number(res,function)-len(function.splitlines())+1
         if function_line>0:
-            insert_text_at_line(filename,function_line,report)
+            if embed_report:
+                insert_text_at_line(filename,function_line,report)
+            else:add_report_to_file(filename,function_line,report,function)
         print(f'-->Finished report {count}/{total}')
+
+
+def find_c_cpp_files(directory):
+    c_cpp_files = []
+    # Walk through the directory
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(('.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx')):
+                c_cpp_files.append(os.path.join(root, file))
+
+    return c_cpp_files
+
+def processFilename(filename,window,service_name,embedReport):
+            res = get_file_text(filename)
+            function_bodies = parse_c_functions(res)
+            # Analyze each function
+            count=0
+            for function in function_bodies:
+                count+=1
+                window['dynamic_text'].update(f'{filename}: Function bodies: {len(function_bodies)} Processing {count}/{len(function_bodies)} Possible Issues: {issues}')
+                res = get_file_text(filename)
+                try:
+                    function_line=find_line_number(res,function[0])-1
+                except: function_line=0
+                if function_line<0: continue
+                callAI(function,filename,count,len(function_bodies),service_name,embedReport)
+                window['progress_bar'].update_bar((100.0/len(function_bodies))*count)
+
 
 def launchKakGUI(filename):
     global issues
@@ -224,7 +273,9 @@ def launchKakGUI(filename):
         [sg.Push(),sg.Text(f'Filename: {filename}',font=('Helvetica', 12, 'bold'),justification='center'),sg.Push()],
         [sg.Text('Select a model:')],
         [sg.Combo(LLMOptions, key='option',default_value="Neuroengine-Medium",size=(30,1))],
-        [frame],
+        #[frame],
+        [sg.Push(), sg.Column([[frame]], justification='center'), sg.Push()],
+        [sg.Checkbox('Embed report in file', key=f"embed", default=True)],
         [sg.Text('Progress:', key='dynamic_text')],
         [sg.ProgressBar(100, size=(50, 20), key='progress_bar', visible=True)],
         [sg.Push(),sg.Button('Launch'), sg.Button('Cancel'),sg.Push()]
@@ -233,10 +284,20 @@ def launchKakGUI(filename):
     window = sg.Window('AutoKaker V1', layout, finalize=True)
     window['progress_bar'].update(visible=False)
     
-    # Extract function bodies
-    res = get_file_text(filename)
-    function_bodies = parse_c_functions(res)
-    window['dynamic_text'].update(f'Function bodies: {len(function_bodies)}')
+    if Path(filename).is_file():
+        # Extract function bodies
+        res = get_file_text(filename)
+        function_bodies = len(parse_c_functions(res))
+        window['dynamic_text'].update(f'Function bodies: {function_bodies}')
+    else:
+        # Search all files and count function bodies
+        files=find_c_cpp_files(filename)
+        function_bodies=0
+        for f in files:
+            res = get_file_text(f)
+            function_bodies += len(parse_c_functions(res))
+        window['dynamic_text'].update(f'Files: {len(files)}, Function bodies: {function_bodies}')
+
     while True:
         event, values = window.read()
         if event in (None, 'Cancel'):
@@ -257,18 +318,14 @@ def launchKakGUI(filename):
                     rulesprompt+=f"{c}.{rules[i]['prompt']}\n"
             if len(values['custom_rule'])>0:
                 rulesprompt+=f"{values['custom_rule']}\n"
-            # Analyze each function
-            for function in function_bodies:
-                count+=1
-                window['dynamic_text'].update(f'Function bodies: {len(function_bodies)} Processing {count}/{len(function_bodies)} Possible Issues: {issues}')
-                res = get_file_text(filename)
-                try:
-                    function_line=find_line_number(res,function[0])-1
-                except: function_line=0
-                if function_line<0: continue
-                addRule(function,filename,count,len(function_bodies),values["option"])
-                window['progress_bar'].update_bar((100.0/len(function_bodies))*count)
-            exit(0)
+            # Find bugs
+            if Path(filename).is_file():
+                processFilename(filename,window,values["option"],values["embed"])
+            else:
+                # Search all files and count function bodies
+                files=find_c_cpp_files(filename)
+                for f in files:
+                    processFilename(f,window,values["option"],values["embed"])
     return
 
 
